@@ -1,69 +1,172 @@
-import Image from "next/image";
+"use client";
+
+import { useState } from "react";
 import styles from "./page.module.css";
 
+const VERDICT_CONFIG = {
+  "Likely Real": {
+    icon: "✓",
+    label: "Likely Real",
+    className: styles.verdictReal,
+  },
+  "Likely Fake": {
+    icon: "✕",
+    label: "Likely Fake",
+    className: styles.verdictFake,
+  },
+  Uncertain: {
+    icon: "?",
+    label: "Uncertain",
+    className: styles.verdictUncertain,
+  },
+};
+
 export default function Home() {
+  const [text, setText] = useState("");
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleCheck() {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      setError("Please enter a headline or article snippet.");
+      return;
+    }
+    setError("");
+    setResult(null);
+    setLoading(true);
+
+    try {
+      const res = await fetch("/api/check-news", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: trimmed }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || "Something went wrong. Please try again.");
+        return;
+      }
+
+      setResult(data);
+    } catch {
+      setError("Network error. Please check your connection and try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleKeyDown(e) {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      handleCheck();
+    }
+  }
+
+  const verdictInfo = result ? VERDICT_CONFIG[result.verdict] : null;
+
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>
-            To get started, edit the{" "}
-            <code className={styles.code}>page.js</code> file.
+    <main className={styles.main}>
+      {/* Background gradient orbs */}
+      <div className={styles.orb1} aria-hidden="true" />
+      <div className={styles.orb2} aria-hidden="true" />
+
+      <div className={styles.container}>
+        {/* Header */}
+        <header className={styles.header}>
+          <div className={styles.badge}>AI-Powered</div>
+          <h1 className={styles.title}>
+            Fake News <span className={styles.titleAccent}>Detector</span>
           </h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className={styles.subtitle}>
+            Paste a news headline or article snippet below. Our AI will classify
+            it as <strong>Likely Real</strong>, <strong>Likely Fake</strong>, or{" "}
+            <strong>Uncertain</strong>.
           </p>
-        </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+        </header>
+
+        {/* Input card */}
+        <div className={styles.card}>
+          <label htmlFor="news-input" className={styles.label}>
+            News Headline or Snippet
+          </label>
+          <textarea
+            id="news-input"
+            className={styles.textarea}
+            placeholder="Paste a news headline or article snippet here…"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            rows={6}
+            disabled={loading}
+          />
+          <div className={styles.textareaFooter}>
+            <span className={styles.hint}>Tip: Press Ctrl+Enter to check</span>
+            <span className={styles.charCount}>{text.length} chars</span>
+          </div>
+
+          <button
+            id="check-button"
+            className={styles.button}
+            onClick={handleCheck}
+            disabled={loading || !text.trim()}
           >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            {loading ? (
+              <span className={styles.buttonInner}>
+                <span className={styles.spinner} aria-hidden="true" />
+                Analyzing…
+              </span>
+            ) : (
+              <span className={styles.buttonInner}>
+                <span className={styles.buttonIcon} aria-hidden="true">⚡</span>
+                Check News
+              </span>
+            )}
+          </button>
+
+          {/* Error message */}
+          {error && (
+            <div className={styles.errorBox} role="alert">
+              <span className={styles.errorIcon} aria-hidden="true">⚠</span>
+              {error}
+            </div>
+          )}
         </div>
-      </main>
-    </div>
+
+        {/* Result card */}
+        {result && verdictInfo && (
+          <div
+            className={`${styles.resultCard} ${verdictInfo.className}`}
+            role="region"
+            aria-label="Analysis result"
+          >
+            <div className={styles.verdictRow}>
+              <span className={styles.verdictIcon} aria-hidden="true">
+                {verdictInfo.icon}
+              </span>
+              <div>
+                <div className={styles.verdictLabel}>Verdict</div>
+                <div className={styles.verdictText}>{verdictInfo.label}</div>
+              </div>
+            </div>
+            <div className={styles.divider} />
+            <div className={styles.reasoning}>
+              <div className={styles.reasoningLabel}>Reasoning</div>
+              <p className={styles.reasoningText}>{result.reasoning}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Footer */}
+        <footer className={styles.footer}>
+          <p>
+            Powered by Gemini AI · Results are indicative, not definitive ·
+            Always verify from trusted sources
+          </p>
+        </footer>
+      </div>
+    </main>
   );
 }
