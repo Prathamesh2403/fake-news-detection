@@ -1,17 +1,26 @@
-# 🔍 Fake News Detector
+# 🔍 Fake News Detector & Multi-Source Verification Pipeline
 
-An AI-powered web app that classifies a news headline or article snippet as **Likely Real**, **Likely Fake**, or **Uncertain**, with a short reasoning — built with Next.js and the Google Gemini API.
+An AI-powered web app that cross-references news claims in real-time against live web search & news data APIs (Gemini 2.5 Flash, Tavily, and NewsData.io), classifying news as **Likely Real**, **Likely Fake**, or **Uncertain** with evidence sources and confidence scores.
 
 ---
 
-## ✨ Features
+## ✨ Key Upgrades & Features
 
-- Single-page interface: paste text, click **Check**, see the verdict
-- Powered by **Gemini 2.5 Flash** via the Gemini API
-- Loading state with spinner while awaiting analysis
-- Color-coded verdict cards (green / red / amber)
-- Graceful error handling for empty input and API failures
-- No database, no authentication — completely stateless
+- **3-Stage Stateless Pipeline**:
+  1. **Claim Extraction**: Gemini extracts the core factual claim statement.
+  2. **Parallel Evidence Search**: Tavily Search & NewsData.io queried in parallel to gather real-time articles & web evidence.
+  3. **AI Verdict Synthesis**: Gemini synthesizes the claim and merged evidence into structured JSON.
+- **Structured Verification Cards**:
+  - Verdict Badge (**Likely Real** / **Likely Fake** / **Uncertain**)
+  - Animated Confidence Indicator progress bar (0–100%)
+  - Extracted Factual Claim statement box
+  - Fact-Check Reasoning
+  - Side-by-side **Supporting Sources** vs **Contradicting Sources** (clickable external links)
+  - **Flags & Risk Indicators** (red/orange warning chips)
+  - Insufficient external evidence alert banner
+- **3-Step Real-Time Pipeline Progress Indicator**
+- **Preset Example Claims** for quick one-click testing
+- **Color Theme System**: Strict Green / Yellow / Orange / Red semantic color mapping
 
 ---
 
@@ -20,7 +29,7 @@ An AI-powered web app that classifies a news headline or article snippet as **Li
 ### 1. Clone the repo
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/Prathamesh2403/fake-news-detection.git
 cd fake-news-detection
 ```
 
@@ -30,17 +39,29 @@ cd fake-news-detection
 npm install
 ```
 
-### 3. Set the API key
+### 3. Environment Variables
 
 Create a `.env.local` file in the project root:
 
 ```bash
-GEMINI_API_KEY=your_gemini_api_key_here
+# Gemini AI
+GEMINI_API_KEY=your_gemini_api_key
+GEMINI_API_KEYS=key1,key2,key3
+GEMINI_MODEL=gemini-2.5-flash
+
+# NewsData.io
+NEWSDATA_API_KEY=your_newsdata_api_key
+NEWSDATA_API_KEYS=key1,key2,key3
+
+# EventRegistry NewsAPI
+NEWSAPI_KEY=your_newsapi_key
+
+# Tavily Search API
+TAVILY_API_KEY=your_tavily_api_key
+TAVILY_API_KEYS=key1,key2
 ```
 
-> You can obtain a Gemini API key from [Google AI Studio](https://aistudio.google.com/app/apikey).
-
-### 4. Run the development server
+### 4. Run Locally
 
 ```bash
 npm run dev
@@ -52,74 +73,6 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ## ☁️ Deploying to Vercel
 
-### 1. Push to GitHub
+Pushing changes to GitHub automatically triggers a Vercel build if linked.
 
-```bash
-git add .
-git commit -m "Initial commit"
-git push origin main
-```
-
-### 2. Import to Vercel
-
-1. Go to [vercel.com](https://vercel.com) → **Add New Project**
-2. Import your GitHub repository
-3. Vercel will auto-detect it as a Next.js project — no extra config needed
-
-### 3. Set the Environment Variable
-
-In the Vercel dashboard for your project:
-
-1. Go to **Settings → Environment Variables**
-2. Add a new variable:
-   - **Name:** `GEMINI_API_KEY`
-   - **Value:** your Gemini API key
-   - **Environment:** Production (and optionally Preview)
-3. Click **Save**
-4. Redeploy (or trigger via a new push)
-
-> ⚠️ Never hardcode the API key in your source code. It must only live in environment variables.
-
----
-
-## 🗂 Project Structure
-
-```
-fake-news-detection/
-├── app/
-│   ├── api/
-│   │   └── check-news/
-│   │       └── route.js      # POST /api/check-news — calls Gemini API
-│   ├── globals.css            # Global CSS design tokens
-│   ├── layout.js              # Root layout with metadata
-│   ├── page.js                # Main UI page
-│   └── page.module.css        # Page-scoped styles
-├── .env.local                 # Local API key (git-ignored)
-├── next.config.mjs
-└── package.json
-```
-
----
-
-## 🔐 API Route
-
-**`POST /api/check-news`**
-
-**Request body:**
-```json
-{ "text": "Your headline or snippet here" }
-```
-
-**Response:**
-```json
-{
-  "verdict": "Likely Real | Likely Fake | Uncertain",
-  "reasoning": "1–2 sentence explanation."
-}
-```
-
----
-
-## ⚖️ Disclaimer
-
-AI verdicts are indicative, not definitive. Always verify news from multiple trusted sources.
+Ensure the environment variables (`GEMINI_API_KEY`, `TAVILY_API_KEY`, `NEWSDATA_API_KEY`) are set in your Vercel Dashboard under **Settings → Environment Variables**.
