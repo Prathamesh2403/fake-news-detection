@@ -8,16 +8,22 @@ const VERDICT_CONFIG = {
     icon: "✓",
     label: "Likely Real",
     className: styles.verdictReal,
+    glowColor: "rgba(34, 197, 94, 0.25)",
+    strokeColor: "#22c55e",
   },
   "Likely Fake": {
     icon: "✕",
     label: "Likely Fake",
     className: styles.verdictFake,
+    glowColor: "rgba(239, 68, 68, 0.25)",
+    strokeColor: "#ef4444",
   },
   Uncertain: {
     icon: "?",
     label: "Uncertain",
     className: styles.verdictUncertain,
+    glowColor: "rgba(234, 179, 8, 0.25)",
+    strokeColor: "#eab308",
   },
 };
 
@@ -28,12 +34,68 @@ const EXAMPLE_CLAIMS = [
   "Federal Reserve adjusts benchmark interest rates following monthly meeting",
 ];
 
+function getSourceDomain(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+/* Radial / Circular Confidence Gauge */
+function RadialConfidenceGauge({ score, strokeColor }) {
+  const radius = 38;
+  const strokeWidth = 7;
+  const circumference = 2 * Math.PI * radius;
+  const safeScore = Math.max(0, Math.min(100, Number(score) || 0));
+  const strokeDashoffset = circumference - (safeScore / 100) * circumference;
+
+  return (
+    <div className={styles.radialGaugeWrapper}>
+      <svg
+        className={styles.radialSvg}
+        width="100"
+        height="100"
+        viewBox="0 0 100 100"
+        aria-hidden="true"
+      >
+        <circle
+          className={styles.radialTrack}
+          cx="50"
+          cy="50"
+          r={radius}
+          strokeWidth={strokeWidth}
+        />
+        <circle
+          className={styles.radialIndicator}
+          cx="50"
+          cy="50"
+          r={radius}
+          strokeWidth={strokeWidth}
+          stroke={strokeColor}
+          strokeDasharray={circumference}
+          strokeDashoffset={strokeDashoffset}
+          strokeLinecap="round"
+          transform="rotate(-90 50 50)"
+        />
+      </svg>
+      <div className={styles.radialDataCenter}>
+        <span className={styles.radialScoreNumber} style={{ color: strokeColor }}>
+          {safeScore}%
+        </span>
+        <span className={styles.radialScoreLabel}>CONFIDENCE</span>
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const [text, setText] = useState("");
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [pipelineStep, setPipelineStep] = useState(1);
   const [error, setError] = useState("");
+  const [expandedSources, setExpandedSources] = useState({});
   const timerRefs = useRef([]);
 
   // Clear timers on unmount
@@ -56,6 +118,7 @@ export default function Home() {
     setResult(null);
     setLoading(true);
     setPipelineStep(1);
+    setExpandedSources({});
 
     // Clear old timers
     timerRefs.current.forEach(clearTimeout);
@@ -101,10 +164,36 @@ export default function Home() {
     handleCheck(claim);
   }
 
+  function toggleExpandSource(id) {
+    setExpandedSources((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
+  }
+
   const verdictInfo = result ? VERDICT_CONFIG[result.verdict] || VERDICT_CONFIG["Uncertain"] : null;
   const isInsufficientEvidence =
     result?.verdict === "Uncertain" &&
     result?.red_flags?.some((flag) => flag.toLowerCase().includes("insufficient external evidence"));
+
+  // Unified citations array combining supporting & contradicting sources
+  const allSources = result
+    ? [
+        ...(result.supporting_sources || []).map((src, i) => ({
+          ...src,
+          type: "supporting",
+          id: `sup-${i}`,
+        })),
+        ...(result.contradicting_sources || []).map((src, i) => ({
+          ...src,
+          type: "contradicting",
+          id: `con-${i}`,
+        })),
+      ]
+    : [];
+
+  const supportingCount = result?.supporting_sources?.length || 0;
+  const contradictingCount = result?.contradicting_sources?.length || 0;
 
   return (
     <main className={styles.main}>
@@ -113,20 +202,19 @@ export default function Home() {
       <div className={styles.orb2} aria-hidden="true" />
 
       <div className={styles.container}>
-        {/* Header */}
+        {/* Header - tightened vertically */}
         <header className={styles.header}>
           <div className={styles.badge}>Multi-Source Fact Checker</div>
           <h1 className={styles.title}>
             Fake News <span className={styles.titleAccent}>Detector</span>
           </h1>
           <p className={styles.subtitle}>
-            Cross-reference news claims in real-time against live web sources, 
-            detecting <strong>Likely Real</strong>, <strong>Likely Fake</strong>, or{" "}
-            <strong>Uncertain</strong> content.
+            Cross-reference news claims in real-time against live web sources, detecting{" "}
+            <strong>Likely Real</strong>, <strong>Likely Fake</strong>, or <strong>Uncertain</strong> content.
           </p>
         </header>
 
-        {/* Input Card */}
+        {/* Input Card - tightened padding & dense wrapping chips */}
         <div className={styles.card}>
           <label htmlFor="news-input" className={styles.label}>
             News Headline or Snippet
@@ -138,7 +226,7 @@ export default function Home() {
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={handleKeyDown}
-            rows={5}
+            rows={4}
             disabled={loading}
           />
           <div className={styles.textareaFooter}>
@@ -146,7 +234,7 @@ export default function Home() {
             <span className={styles.charCount}>{text.length} chars</span>
           </div>
 
-          {/* Example Claims */}
+          {/* Example Claims - single denser wrapping row */}
           <div className={styles.examplesContainer}>
             <span className={styles.examplesTitle}>Try an example claim:</span>
             <div className={styles.examplesList}>
@@ -157,7 +245,7 @@ export default function Home() {
                   onClick={() => handleSelectExample(claim)}
                   disabled={loading}
                 >
-                  "{claim.slice(0, 45)}…"
+                  "{claim.slice(0, 48)}…"
                 </button>
               ))}
             </div>
@@ -232,160 +320,183 @@ export default function Home() {
           </div>
         )}
 
-        {/* Results Card */}
+        {/* Results View: Two-Column Split Layout (~65% / 35%) */}
         {result && verdictInfo && !loading && (
           <div
-            className={`${styles.resultCard} ${verdictInfo.className}`}
+            className={styles.resultsGrid}
             role="region"
-            aria-label="Fact check verdict result"
+            aria-label="Fact check verdict and sources"
           >
-            {/* Header: Verdict + Confidence Score */}
-            <div className={styles.verdictHeaderRow}>
-              <div className={styles.verdictRow}>
-                <span className={styles.verdictIcon} aria-hidden="true">
-                  {verdictInfo.icon}
-                </span>
-                <div>
-                  <div className={styles.verdictLabel}>Verdict</div>
-                  <div className={styles.verdictText}>{verdictInfo.label}</div>
+            {/* Left Column: Main Analysis (~65%) */}
+            <div className={`${styles.mainColumn} ${verdictInfo.className}`}>
+              {/* Verdict Card with Radial Speedometer Gauge */}
+              <div className={styles.verdictCard}>
+                <div className={styles.verdictMeta}>
+                  <div className={styles.verdictIconWrapper} aria-hidden="true">
+                    {verdictInfo.icon}
+                  </div>
+                  <div>
+                    <div className={styles.verdictSubtext}>VERDICT CLASSIFICATION</div>
+                    <div className={styles.verdictTitle}>{verdictInfo.label}</div>
+                  </div>
                 </div>
+
+                <RadialConfidenceGauge
+                  score={result.confidence}
+                  strokeColor={verdictInfo.strokeColor}
+                />
               </div>
 
-              {/* Confidence Progress Bar */}
-              <div className={styles.confidenceBox}>
-                <div className={styles.confidenceHeader}>
-                  <span>Confidence Score</span>
-                  <span className={styles.confidenceValue}>{result.confidence}%</span>
+              {/* Extracted Factual Claim as Highlighted Quote Block */}
+              {result.claim_extracted && (
+                <div className={styles.claimQuoteCard}>
+                  <div className={styles.claimQuoteHeader}>
+                    <span className={styles.claimQuoteSymbol}>“</span>
+                    <span className={styles.claimQuoteTitle}>Extracted Factual Claim</span>
+                  </div>
+                  <blockquote className={styles.claimQuoteText}>
+                    "{result.claim_extracted}"
+                  </blockquote>
                 </div>
-                <div className={styles.confidenceTrack}>
-                  <div
-                    className={styles.confidenceFill}
-                    style={{ width: `${result.confidence}%` }}
-                  />
-                </div>
+              )}
+
+              {/* Fact-Check Reasoning */}
+              <div className={styles.reasoningCard}>
+                <div className={styles.sectionHeaderLabel}>Fact-Check Reasoning</div>
+                <p className={styles.reasoningParagraph}>{result.reasoning}</p>
               </div>
+
+              {/* Insufficient Evidence Warning */}
+              {isInsufficientEvidence && (
+                <div className={styles.insufficientCallout}>
+                  <span className={styles.calloutIcon}>⚠️</span>
+                  <span>Not enough external sources found to verify this claim.</span>
+                </div>
+              )}
+
+              {/* Flags & Risk Indicators */}
+              {result.red_flags && result.red_flags.length > 0 && (
+                <div className={styles.redFlagsCard}>
+                  <div className={styles.sectionHeaderLabel}>Flags & Risk Indicators</div>
+                  <div className={styles.redFlagsList}>
+                    {result.red_flags.map((flag, idx) => {
+                      const isSevere =
+                        flag.toLowerCase().includes("fake") ||
+                        flag.toLowerCase().includes("insufficient") ||
+                        flag.toLowerCase().includes("misinformation");
+                      return (
+                        <span
+                          key={idx}
+                          className={`${styles.redFlagChip} ${
+                            isSevere ? styles.chipRed : styles.chipOrange
+                          }`}
+                        >
+                          <span className={styles.flagIcon}>⚠️</span>
+                          {flag}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div className={styles.divider} />
-
-            {/* Extracted Claim */}
-            {result.claim_extracted && (
-              <div className={styles.claimBox}>
-                <div className={styles.claimLabel}>Extracted Factual Claim</div>
-                <div className={styles.claimText}>"{result.claim_extracted}"</div>
-              </div>
-            )}
-
-            {/* Reasoning */}
-            <div className={styles.reasoning}>
-              <div className={styles.reasoningLabel}>Fact-Check Reasoning</div>
-              <p className={styles.reasoningText}>{result.reasoning}</p>
-            </div>
-
-            {/* Insufficient External Evidence Callout */}
-            {isInsufficientEvidence && (
-              <div className={styles.insufficientCallout}>
-                <span className={styles.calloutIcon}>⚠️</span>
-                <span>Not enough external sources found to verify this claim.</span>
-              </div>
-            )}
-
-            {/* Evidence Columns */}
-            <div className={styles.evidenceSection}>
-              <div className={styles.evidenceGrid}>
-                {/* Supporting Sources */}
-                <div className={styles.evidenceColumn}>
-                  <div className={`${styles.evidenceHeader} ${styles.supportingHeader}`}>
-                    <span>Supporting Sources</span>
-                    <span className={styles.sourceBadgeCount}>
-                      {result.supporting_sources?.length || 0}
+            {/* Right Column: Sticky Unified Citations Sidebar (~35%) */}
+            <aside className={styles.sidebarColumn}>
+              <div className={styles.sidebarSticky}>
+                <div className={styles.sidebarHeader}>
+                  <div className={styles.sidebarHeadingGroup}>
+                    <h2 className={styles.sidebarTitle}>Citations & Sources</h2>
+                    <span className={styles.summaryChip}>
+                      Sources: <strong className={styles.summaryReal}>{supportingCount} supporting</strong> ·{" "}
+                      <strong className={styles.summaryFake}>{contradictingCount} contradicting</strong>
                     </span>
                   </div>
-                  <div className={styles.sourceList}>
-                    {result.supporting_sources && result.supporting_sources.length > 0 ? (
-                      result.supporting_sources.map((src, i) => (
-                        <a
-                          key={i}
-                          href={src.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={styles.sourceCard}
-                        >
-                          <div className={styles.sourceTop}>
-                            <span className={styles.sourceName}>{src.name}</span>
-                            <span className={styles.sourceIcon}>↗</span>
-                          </div>
-                          {src.snippet && (
-                            <p className={styles.sourceSnippet}>{src.snippet}</p>
-                          )}
-                        </a>
-                      ))
-                    ) : (
-                      <div className={styles.emptySources}>No supporting sources found</div>
-                    )}
-                  </div>
                 </div>
 
-                {/* Contradicting Sources */}
-                <div className={styles.evidenceColumn}>
-                  <div className={`${styles.evidenceHeader} ${styles.contradictingHeader}`}>
-                    <span>Contradicting Sources</span>
-                    <span className={styles.sourceBadgeCount}>
-                      {result.contradicting_sources?.length || 0}
-                    </span>
-                  </div>
-                  <div className={styles.sourceList}>
-                    {result.contradicting_sources && result.contradicting_sources.length > 0 ? (
-                      result.contradicting_sources.map((src, i) => (
-                        <a
-                          key={i}
-                          href={src.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={styles.sourceCard}
-                        >
-                          <div className={styles.sourceTop}>
-                            <span className={styles.sourceName}>{src.name}</span>
-                            <span className={styles.sourceIcon}>↗</span>
-                          </div>
-                          {src.snippet && (
-                            <p className={styles.sourceSnippet}>{src.snippet}</p>
-                          )}
-                        </a>
-                      ))
-                    ) : (
-                      <div className={styles.emptySources}>No contradicting sources found</div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
+                <div className={styles.sourcesContainer}>
+                  {allSources.length > 0 ? (
+                    allSources.map((src) => {
+                      const isExpanded = !!expandedSources[src.id];
+                      const domain = getSourceDomain(src.url);
+                      const isSupporting = src.type === "supporting";
 
-            {/* Red Flags */}
-            {result.red_flags && result.red_flags.length > 0 && (
-              <div className={styles.redFlagsSection}>
-                <div className={styles.redFlagsLabel}>Flags & Risk Indicators</div>
-                <div className={styles.redFlagsList}>
-                  {result.red_flags.map((flag, idx) => {
-                    const isSevere =
-                      flag.toLowerCase().includes("fake") ||
-                      flag.toLowerCase().includes("insufficient") ||
-                      flag.toLowerCase().includes("misinformation");
-                    return (
-                      <span
-                        key={idx}
-                        className={`${styles.redFlagChip} ${
-                          isSevere ? styles.chipRed : styles.chipOrange
-                        }`}
-                      >
-                        <span className={styles.flagIcon}>⚠️</span>
-                        {flag}
-                      </span>
-                    );
-                  })}
+                      return (
+                        <div
+                          key={src.id}
+                          className={`${styles.sourceCard} ${
+                            isSupporting ? styles.sourceSupporting : styles.sourceContradicting
+                          }`}
+                        >
+                          <div className={styles.sourceCardTop}>
+                            <div className={styles.sourceIdentity}>
+                              <img
+                                src={`https://www.google.com/s2/favicons?domain=${domain}&sz=32`}
+                                alt=""
+                                className={styles.sourceFavicon}
+                                onError={(e) => {
+                                  e.currentTarget.style.display = "none";
+                                }}
+                              />
+                              <div className={styles.sourceNameWrap}>
+                                <span className={styles.sourceName} title={src.name}>
+                                  {src.name}
+                                </span>
+                                {domain && <span className={styles.sourceDomain}>{domain}</span>}
+                              </div>
+                            </div>
+
+                            <div className={styles.sourceActions}>
+                              <span
+                                className={`${styles.sourceBadge} ${
+                                  isSupporting ? styles.badgeSupporting : styles.badgeContradicting
+                                }`}
+                              >
+                                {isSupporting ? "Supporting" : "Contradicting"}
+                              </span>
+                              {src.url && (
+                                <a
+                                  href={src.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className={styles.sourceLinkArrow}
+                                  title="Open source in new tab"
+                                >
+                                  ↗
+                                </a>
+                              )}
+                            </div>
+                          </div>
+
+                          {src.snippet && (
+                            <div className={styles.sourceSnippetWrapper}>
+                              <p
+                                className={`${styles.sourceSnippet} ${
+                                  isExpanded ? styles.snippetExpanded : styles.snippetCollapsed
+                                }`}
+                              >
+                                {src.snippet}
+                              </p>
+                              {src.snippet.length > 85 && (
+                                <button
+                                  type="button"
+                                  className={styles.expandButton}
+                                  onClick={() => toggleExpandSource(src.id)}
+                                >
+                                  {isExpanded ? "Collapse ▲" : "Expand full snippet ▼"}
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className={styles.emptySources}>No sources cross-referenced.</div>
+                  )}
                 </div>
               </div>
-            )}
+            </aside>
           </div>
         )}
 
